@@ -22,7 +22,7 @@ function renderHTML({ supply, holders, txsHtml, marketCap }) {
       h1{margin:0 0 8px;font-size:28px}
       .subtitle{color:var(--muted);margin-bottom:24px}
       .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px}
-      .card{background:rgba(255,255,255,0.02);border-radius:12px;padding:18px;box-shadow:0 4px 18px rgba(0,0,0,0.6);transition:transform 0.14s, box-shadow 0.14s;}
+      .card{background:rgba(255,255,255,0.02);border-radius:12px;padding:18px;box-shadow:0 4px 18px rgba(0,0,0,0.6);transition:transform 0.14s, box-shadow 0.14s; height: max-content; width:max-content; }
       .card:hover{transform:translateY(-6px);box-shadow:0 10px 30px rgba(0,0,0,0.7);}
       .label{font-size:13px;color:var(--muted);margin-bottom:8px}
       .value{font-size:20px;color:var(--gold);font-weight:700;word-break:break-all}
