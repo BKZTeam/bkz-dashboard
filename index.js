@@ -93,8 +93,23 @@ app.get("/", async (req, res) => {
     const tokenJson = await tokenResp.json();
 
     // A estrutura pode variar — tentamos aceder aos campos comuns
-    const totalSupplyRaw = tokenJson?.data?.total_supply ?? tokenJson?.result?.totalSupply ?? null;
-    const holdersCount = tokenJson?.data?.holders_count ?? tokenJson?.result?.holdersCount ?? null;
+    const tokenData =
+  Array.isArray(tokenJson?.result) ? tokenJson.result[0] :
+  tokenJson?.data ?? tokenJson?.result ?? null;
+
+const totalSupplyRaw =
+  tokenData?.totalSupply ??
+  tokenData?.total_supply ??
+  null;
+
+const holdersCount =
+  tokenData?.holdersCount ??
+  tokenData?.holders_count ??
+  null;
+
+const decimals =
+  tokenData?.decimals ?? 18;
+
 
     const decimals = tokenJson?.data?.decimals ?? tokenJson?.result?.decimals ?? 18;
     const supply = totalSupplyRaw ? (Number(totalSupplyRaw) / Math.pow(10, Number(decimals))) : null;
