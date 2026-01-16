@@ -1,14 +1,32 @@
 import express from "express";
-import fetch from "node-fetch";
+import { ethers } from "ethers";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⚡ Troca aqui pelo teu token
-const TOKEN_ADDRESS = "0x7852998765c0730d59D78262CfdFa666989023bd";
+// ⚡ Configurações do token
+const TOKEN_ADDRESS = "0x7852998765c0730d59D78262CfdFa666989023bd"; // teu token
+const RPC_URL = "https://bsc-dataseed.binance.org/"; // BSC Mainnet public RPC
+const provider = new ethers.JsonRpcProvider(RPC_URL);
 
-// Serve simple HTML (preto + dourado)
-function renderHTML({ price, priceChange, liquidity, pairName }) {
+// Minimal ABI para ERC-20
+const ERC20_ABI = [
+  "function totalSupply() view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)"
+];
+
+const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, provider);
+
+// Helper para formatar números
+function fmt(n, decimals = 18) {
+  if (!n) return "—";
+  const factor = Math.pow(10, decimals);
+  return (Number(n) / factor).toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
+// Render HTML
+function renderHTML({ supply, symbol }) {
   return `
   <!doctype html>
   <html>
@@ -33,64 +51,40 @@ function renderHTML({ price, priceChange, liquidity, pairName }) {
   </head>
   <body>
     <div class="wrap">
-      <h1>Token Live Dashboard</h1>
-      <div class="subtitle">Data via DexScreener (free, live)</div>
+      <h1>${symbol} Live Dashboard</h1>
+      <div class="subtitle">Dados on-chain diretamente do smart contract</div>
 
       <div class="grid">
         <div class="card">
-          <div class="label">💵 Price (USD)</div>
-          <div class="value">${price ?? "—"}</div>
-          <div class="small">${pairName ?? "Pair info"}</div>
-        </div>
-
-        <div class="card">
-          <div class="label">📈 24h Change</div>
-          <div class="value">${priceChange ?? "—"}%</div>
-          <div class="small">DexScreener</div>
-        </div>
-
-        <div class="card">
-          <div class="label">💰 Liquidity (USD)</div>
-          <div class="value">${liquidity ?? "—"}</div>
-          <div class="small">Approx.</div>
+          <div class="label">💰 Total Supply</div>
+          <div class="value">${supply ?? "—"} ${symbol}</div>
+          <div class="small">BSC Mainnet</div>
         </div>
       </div>
 
-      <footer>Updated on page load — DexScreener API</footer>
+      <footer>Atualizado ao carregar a página — via RPC pública</footer>
     </div>
   </body>
   </html>
   `;
 }
 
-// Helper para formatar números
-function fmt(n) {
-  if (!n) return "—";
-  return Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
-}
-
+// Endpoint principal
 app.get("/", async (req, res) => {
   try {
-    const url = `https://api.dexscreener.com/latest/dex/tokens/${TOKEN_ADDRESS}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
+    const [totalSupplyRaw, decimals, symbol] = await Promise.all([
+      tokenContract.totalSupply(),
+      tokenContract.decimals(),
+      tokenContract.symbol()
+    ]);
 
-    // Pega na primeira pair
-    const pair = data?.pairs?.[0] ?? {};
-
-    const price = pair.priceUsd ? fmt(pair.priceUsd) : null;
-    const priceChange = pair.priceChange ? fmt(pair.priceChange) : null;
-    const liquidity = pair.liquidity ? fmt(pair.liquidity.usd) : null;
-    const pairName = pair.pairAddress ?? "—";
-
-    res.send(renderHTML({ price, priceChange, liquidity, pairName }));
+    const supply = fmt(totalSupplyRaw, decimals);
+    res.send(renderHTML({ supply, symbol }));
 
   } catch (err) {
     console.error("Erro:", err);
-    res.status(500).send("Erro ao obter dados do DexScreener API.");
+    res.status(500).send("Erro ao obter dados do smart contract.");
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
