@@ -4,19 +4,29 @@ import { ethers } from "ethers";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⚡ Configurações do token
-const TOKEN_ADDRESS = "0x7852998765c0730d59D78262CfdFa666989023bd"; // teu token
-const RPC_URL = "https://bsc-dataseed.binance.org/"; // BSC Mainnet public RPC
-const provider = new ethers.JsonRpcProvider(RPC_URL);
+// ⚡ CONFIGURAÇÕES
+const TOKEN_ADDRESS = "0x7852998765c0730d59D78262CfdFa666989023bd";
 
-// Minimal ABI para ERC-20
+// Public RPCs (fallback se um falhar)
+const RPCS = {
+  bsc: [
+    "https://bsc-dataseed.binance.org/",
+    "https://bsc-dataseed1.defibit.io/",
+    "https://bsc-dataseed1.ninicoin.io/"
+  ],
+  eth: [
+    "https://eth.llamarpc.com",
+    "https://rpc.ankr.com/eth",
+    "https://rpc.ankr.com/eth_goerli" // só se fores testnet
+  ]
+};
+
+// Minimal ERC-20 ABI
 const ERC20_ABI = [
   "function totalSupply() view returns (uint256)",
   "function decimals() view returns (uint8)",
   "function symbol() view returns (string)"
 ];
-
-const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, provider);
 
 // Helper para formatar números
 function fmt(n, decimals = 18) {
@@ -26,7 +36,7 @@ function fmt(n, decimals = 18) {
 }
 
 // Render HTML
-function renderHTML({ supply, symbol }) {
+function renderHTML({ supply, symbol, chainName, error }) {
   return `
   <!doctype html>
   <html>
@@ -51,39 +61,67 @@ function renderHTML({ supply, symbol }) {
   </head>
   <body>
     <div class="wrap">
-      <h1>${symbol} Live Dashboard</h1>
-      <div class="subtitle">Dados on-chain diretamente do smart contract</div>
+      <h1>${symbol ?? TOKEN_ADDRESS} Live Dashboard</h1>
+      <div class="subtitle">Dados on-chain via RPC pública — ${chainName ?? "desconhecida"}</div>
 
       <div class="grid">
         <div class="card">
           <div class="label">💰 Total Supply</div>
-          <div class="value">${supply ?? "—"} ${symbol}</div>
-          <div class="small">BSC Mainnet</div>
+          <div class="value">${supply ?? "—"} ${symbol ?? ""}</div>
+          <div class="small">${chainName ?? "Chain"}</div>
         </div>
       </div>
 
-      <footer>Atualizado ao carregar a página — via RPC pública</footer>
+      ${error ? `<div class="card" style="margin-top:20px;background:rgba(255,0,0,0.2)">
+        <div class="label">⚠️ Erro</div>
+        <div class="value">${error}</div>
+      </div>` : ""}
+
+      <footer>Atualizado ao carregar a página</footer>
     </div>
   </body>
   </html>
   `;
 }
 
+// Função para tentar RPCs em fallback
+async function tryRPCs(rpcs) {
+  for (let url of rpcs) {
+    try {
+      const provider = new ethers.JsonRpcProvider(url);
+      const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, provider);
+      const [totalSupplyRaw, decimals, symbol] = await Promise.all([
+        tokenContract.totalSupply(),
+        tokenContract.decimals(),
+        tokenContract.symbol()
+      ]);
+      return { totalSupplyRaw, decimals, symbol, chainName: url.includes("bsc") ? "BSC" : "Ethereum" };
+    } catch (err) {
+      console.warn(`RPC falhou: ${url}`);
+      continue;
+    }
+  }
+  throw new Error("Todos os RPCs falharam ou token inválido");
+}
+
 // Endpoint principal
 app.get("/", async (req, res) => {
   try {
-    const [totalSupplyRaw, decimals, symbol] = await Promise.all([
-      tokenContract.totalSupply(),
-      tokenContract.decimals(),
-      tokenContract.symbol()
-    ]);
+    // tenta BSC primeiro
+    let result;
+    try {
+      result = await tryRPCs(RPCS.bsc);
+    } catch {
+      // tenta Ethereum
+      result = await tryRPCs(RPCS.eth);
+    }
 
-    const supply = fmt(totalSupplyRaw, decimals);
-    res.send(renderHTML({ supply, symbol }));
+    const supply = fmt(result.totalSupplyRaw, result.decimals);
+    res.send(renderHTML({ supply, symbol: result.symbol, chainName: result.chainName }));
 
   } catch (err) {
-    console.error("Erro:", err);
-    res.status(500).send("Erro ao obter dados do smart contract.");
+    console.error("Erro geral:", err);
+    res.send(renderHTML({ error: err.message }));
   }
 });
 
